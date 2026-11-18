@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Lumen</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05060d; overflow: hidden; touch-action: none; }
+  #jeu { width: 100%; height: 100%; }
+  #tourne { display: none; position: fixed; inset: 0; z-index: 10; background: #05060d; color: #9fb0ff;
+            font: 20px sans-serif; align-items: center; justify-content: center; text-align: center; }
+  @media (orientation: portrait) { #tourne { display: flex; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+<div id="jeu"></div>
+<div id="tourne">Tourne ton téléphone<br>en mode paysage</div>
+<script>
+const LARGEUR = 800;
+const HAUTEUR = 360;
+
+class Jeu extends Phaser.Scene {
+  constructor() { super('Jeu'); }
+
+  create() {
+    this.input.addPointer(2);
+    this.gauche = false;
+    this.droite = false;
+    this.demandeSaut = false;
+
+    // Particules de fond
+    for (let i = 0; i < 40; i++) {
+      const p = this.add.circle(
+        Phaser.Math.Between(0, LARGEUR), Phaser.Math.Between(0, HAUTEUR),
+        Phaser.Math.Between(1, 2), 0x9fb0ff, Phaser.Math.FloatBetween(0.15, 0.5));
+      this.tweens.add({
+        targets: p, y: p.y - Phaser.Math.Between(40, 120), alpha: 0.05,
+        duration: Phaser.Math.Between(2500, 5000), yoyo: true, repeat: -1, ease: 'Sine.inOut'
+      });
+    }
+
+    // Joueur : une petite lumière
+    this.halo = this.add.circle(100, 250, 34, 0xffd27a, 0.18);
+    this.tweens.add({ targets: this.halo, scale: 1.3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.joueur = this.add.circle(100, 250, 14, 0xffe9a8);
+    this.physics.add.existing(this.joueur);
+    this.joueur.body.setCollideWorldBounds(true);
+
+    // Sol et plateformes
+    this.creerPlateforme(LARGEUR / 2, HAUTEUR - 20, LARGEUR, 40);
+    this.creerPlateforme(300, 270, 160, 16);
+    this.creerPlateforme(500, 200, 160, 16);
+    this.creerPlateforme(700, 130, 160, 16);
+
+    // Commandes tactiles
+    this.bouton(60, 300, '◀', () => { this.gauche = true; }, () => { this.gauche = false; });
+    this.bouton(150, 300, '▶', () => { this.droite = true; }, () => { this.droite = false; });
+    this.bouton(740, 300, '▲', () => { this.demandeSaut = true; }, () => {});
+
+    // Clavier (pour tester sur ordinateur)
+    this.clavier = this.input.keyboard.createCursorKeys();
+    this.espace = this.input.keyboard.addKey('SPACE');
+
+    this.add.text(16, 12, 'LUMEN - premier test', { fontFamily: 'sans-serif', fontSize: '16px', color: '#8fa0ff' });
+  }
+
+  creerPlateforme(x, y, largeur, hauteur) {
+    const plateforme = this.add.rectangle(x, y, largeur, hauteur, 0x1a1f3a);
+    plateforme.setStrokeStyle(2, 0x4a5aa8);
+    this.physics.add.existing(plateforme, true);
+    this.physics.add.collider(this.joueur, plateforme);
+    return plateforme;
+  }
+
+  bouton(x, y, texte, quandAppuye, quandRelache) {
+    const rayon = 34;
+    const cercle = this.add.circle(x, y, rayon, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35);
+    cercle.setInteractive(new Phaser.Geom.Circle(rayon, rayon, rayon + 10), Phaser.Geom.Circle.Contains);
+    this.add.text(x, y, texte, { fontSize: '28px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.8);
+    cercle.on('pointerdown', quandAppuye);
+    cercle.on('pointerup', quandRelache);
+    cercle.on('pointerout', quandRelache);
+  }
+
+  update() {
+    const corps = this.joueur.body;
+    const allerGauche = this.gauche || this.clavier.left.isDown;
+    const allerDroite = this.droite || this.clavier.right.isDown;
+    corps.setVelocityX(allerGauche ? -200 : allerDroite ? 200 : 0);
+
+    const auSol = corps.blocked.down || corps.touching.down;
+    const saut = this.demandeSaut
+      || Phaser.Input.Keyboard.JustDown(this.clavier.up)
+      || Phaser.Input.Keyboard.JustDown(this.espace);
+    if (saut && auSol) corps.setVelocityY(-430);
+    this.demandeSaut = false;
+
+    this.halo.setPosition(this.joueur.x, this.joueur.y);
+  }
+}
+
+new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'jeu',
+  width: LARGEUR,
+  height: HAUTEUR,
+  backgroundColor: '#080a18',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  physics: { default: 'arcade', arcade: { gravity: { y: 900 } } },
+  scene: Jeu
+});
+</script>
+</body>
+  </html>
