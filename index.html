@@ -19,6 +19,7 @@
 <script>
 const LARGEUR = 800;
 const HAUTEUR = 360;
+const COULEUR_ENNEMI = 0x8a3b5c;
 
 class Jeu extends Phaser.Scene {
   constructor() { super('Jeu'); }
@@ -28,6 +29,12 @@ class Jeu extends Phaser.Scene {
     this.gauche = false;
     this.droite = false;
     this.demandeSaut = false;
+    this.demandeAttaque = false;
+    this.sens = 1;                 // 1 = regarde à droite, -1 = à gauche
+    this.prochaineAttaque = 0;
+    this.ennemis = [];
+    this.listePlateformes = [];
+    this.vaincus = 0;
 
     // Particules de fond
     for (let i = 0; i < 40; i++) {
@@ -44,6 +51,7 @@ class Jeu extends Phaser.Scene {
     this.halo = this.add.circle(100, 250, 34, 0xffd27a, 0.18);
     this.tweens.add({ targets: this.halo, scale: 1.3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
     this.joueur = this.add.circle(100, 250, 14, 0xffe9a8);
+    this.oeil = this.add.circle(106, 248, 3, 0x080a18);
     this.physics.add.existing(this.joueur);
     this.joueur.body.setCollideWorldBounds(true);
 
@@ -53,16 +61,23 @@ class Jeu extends Phaser.Scene {
     this.creerPlateforme(500, 200, 160, 16);
     this.creerPlateforme(700, 130, 160, 16);
 
+    // Premier ennemi : un mannequin d'entraînement
+    this.creerEnnemi(420, 300);
+
     // Commandes tactiles
     this.bouton(60, 300, '◀', () => { this.gauche = true; }, () => { this.gauche = false; });
     this.bouton(150, 300, '▶', () => { this.droite = true; }, () => { this.droite = false; });
     this.bouton(740, 300, '▲', () => { this.demandeSaut = true; }, () => {});
+    this.bouton(655, 300, '●', () => { this.demandeAttaque = true; }, () => {});
 
-    // Clavier (pour tester sur ordinateur)
+    // Clavier (pour tester sur ordinateur) : flèches, espace = saut, X = attaque
     this.clavier = this.input.keyboard.createCursorKeys();
     this.espace = this.input.keyboard.addKey('SPACE');
+    this.toucheAttaque = this.input.keyboard.addKey('X');
 
-    this.add.text(16, 12, 'LUMEN - premier test', { fontFamily: 'sans-serif', fontSize: '16px', color: '#8fa0ff' });
+    this.add.text(16, 12, 'LUMEN - test 2 : attaque', { fontFamily: 'sans-serif', fontSize: '16px', color: '#8fa0ff' });
+    this.texteScore = this.add.text(LARGEUR - 16, 12, 'Vaincus : 0',
+      { fontFamily: 'sans-serif', fontSize: '16px', color: '#ff9ac4' }).setOrigin(1, 0);
   }
 
   creerPlateforme(x, y, largeur, hauteur) {
@@ -70,7 +85,20 @@ class Jeu extends Phaser.Scene {
     plateforme.setStrokeStyle(2, 0x4a5aa8);
     this.physics.add.existing(plateforme, true);
     this.physics.add.collider(this.joueur, plateforme);
+    this.listePlateformes.push(plateforme);
     return plateforme;
+  }
+
+  creerEnnemi(x, y) {
+    const ennemi = this.add.rectangle(x, y, 26, 36, COULEUR_ENNEMI);
+    ennemi.setStrokeStyle(2, 0xff7ab0);
+    this.physics.add.existing(ennemi);
+    ennemi.body.setDragX(500);
+    ennemi.body.setCollideWorldBounds(true);
+    ennemi.pv = 3;
+    ennemi.colliders = this.listePlateformes.map((p) => this.physics.add.collider(ennemi, p));
+    this.ennemis.push(ennemi);
+    return ennemi;
   }
 
   bouton(x, y, texte, quandAppuye, quandRelache) {
@@ -83,10 +111,64 @@ class Jeu extends Phaser.Scene {
     cercle.on('pointerout', quandRelache);
   }
 
+  attaquer() {
+    if (this.time.now < this.prochaineAttaque) return;
+    this.prochaineAttaque = this.time.now + 350;
+
+    const x = this.joueur.x + this.sens * 34;
+    const y = this.joueur.y;
+    const zone = new Phaser.Geom.Rectangle(x - 26, y - 22, 52, 44);
+
+    // Trait lumineux de l'attaque
+    const trace = this.add.rectangle(x, y, 52, 10, 0xffffff, 0.8).setScale(0.4, 1);
+    this.tweens.add({
+      targets: trace, alpha: 0, scaleX: 1.1, scaleY: 3, duration: 160,
+      onComplete: () => trace.destroy()
+    });
+
+    [...this.ennemis].forEach((ennemi) => {
+      if (Phaser.Geom.Intersects.RectangleToRectangle(zone, ennemi.getBounds())) this.toucher(ennemi);
+    });
+  }
+
+  toucher(ennemi) {
+    ennemi.pv -= 1;
+    ennemi.setFillStyle(0xffffff);
+    this.time.delayedCall(90, () => { if (ennemi.active) ennemi.setFillStyle(COULEUR_ENNEMI); });
+    ennemi.body.setVelocityX(this.sens * 260);
+    ennemi.body.setVelocityY(-120);
+    this.cameras.main.shake(90, 0.004);
+    if (ennemi.pv <= 0) this.mourir(ennemi);
+  }
+
+  mourir(ennemi) {
+    const x = ennemi.x;
+    const y = ennemi.y;
+    for (let i = 0; i < 12; i++) {
+      const eclat = this.add.circle(x, y, Phaser.Math.Between(2, 4), 0xff7ab0);
+      this.tweens.add({
+        targets: eclat,
+        x: x + Phaser.Math.Between(-60, 60),
+        y: y + Phaser.Math.Between(-60, 20),
+        alpha: 0, duration: 450,
+        onComplete: () => eclat.destroy()
+      });
+    }
+    ennemi.colliders.forEach((c) => this.physics.world.removeCollider(c));
+    this.ennemis = this.ennemis.filter((e) => e !== ennemi);
+    ennemi.destroy();
+
+    this.vaincus += 1;
+    this.texteScore.setText('Vaincus : ' + this.vaincus);
+    this.time.delayedCall(2000, () => this.creerEnnemi(420, 300));
+  }
+
   update() {
     const corps = this.joueur.body;
     const allerGauche = this.gauche || this.clavier.left.isDown;
     const allerDroite = this.droite || this.clavier.right.isDown;
+    if (allerGauche) this.sens = -1;
+    else if (allerDroite) this.sens = 1;
     corps.setVelocityX(allerGauche ? -200 : allerDroite ? 200 : 0);
 
     const auSol = corps.blocked.down || corps.touching.down;
@@ -96,7 +178,11 @@ class Jeu extends Phaser.Scene {
     if (saut && auSol) corps.setVelocityY(-430);
     this.demandeSaut = false;
 
+    if (this.demandeAttaque || Phaser.Input.Keyboard.JustDown(this.toucheAttaque)) this.attaquer();
+    this.demandeAttaque = false;
+
     this.halo.setPosition(this.joueur.x, this.joueur.y);
+    this.oeil.setPosition(this.joueur.x + this.sens * 6, this.joueur.y - 2);
   }
 }
 
@@ -112,4 +198,4 @@ new Phaser.Game({
 });
 </script>
 </body>
-  </html>
+</html>
