@@ -3,7 +3,7 @@ class SceneJeu extends Phaser.Scene {
   constructor() { super('Jeu'); }
 
   preload() {
-    this.add.text(LARGEUR / 2, HAUTEUR / 2, 'Chargement…',
+    this.texteChargement = this.add.text(LARGEUR / 2, HAUTEUR / 2, 'Chargement…',
       { fontFamily: 'sans-serif', fontSize: '22px', color: '#8fa0ff' }).setOrigin(0.5);
     this.load.on('loaderror', (fichier) => {
       if (typeof afficherErreur === 'function') afficherErreur('Image introuvable : ' + fichier.key);
@@ -14,6 +14,7 @@ class SceneJeu extends Phaser.Scene {
   }
 
   create() {
+    this.texteChargement.destroy();
     this.preparerCadres();
     this.niveau = NIVEAU_1;
     this.plateformes = [];
@@ -123,10 +124,37 @@ class SceneJeu extends Phaser.Scene {
   }
 
   creerInterface() {
-    this.add.text(20, 14, 'LUMEN - test 4 : décor et héros',
+    this.add.text(20, 14, 'LUMEN - test 4.1',
       { fontFamily: 'sans-serif', fontSize: '18px', color: '#8fa0ff' }).setDepth(10);
     this.texteScore = this.add.text(LARGEUR - 20, 14, 'Vaincus : 0',
       { fontFamily: 'sans-serif', fontSize: '18px', color: '#ff9ac4' }).setOrigin(1, 0).setDepth(10);
+
+    // Bouton plein écran (le jeu occupe alors tout l'écran du téléphone)
+    const cx = LARGEUR - 160;
+    const cy = 26;
+    const bouton = this.add.circle(cx, cy, 20, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35).setDepth(10);
+    bouton.setInteractive(new Phaser.Geom.Circle(20, 20, 30), Phaser.Geom.Circle.Contains);
+    const icone = this.add.graphics().setDepth(10);
+    icone.lineStyle(2, 0xffffff, 0.85);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+      icone.beginPath();
+      icone.moveTo(cx + sx * 8, cy + sy * 3);
+      icone.lineTo(cx + sx * 8, cy + sy * 8);
+      icone.lineTo(cx + sx * 3, cy + sy * 8);
+      icone.strokePath();
+    });
+    bouton.on('pointerdown', () => this.basculerPleinEcran());
+  }
+
+  basculerPleinEcran() {
+    if (this.scale.isFullscreen) {
+      this.scale.stopFullscreen();
+      return;
+    }
+    this.scale.startFullscreen();
+    try {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    } catch (e) { /* non pris en charge : on continue */ }
   }
 
   gererAttaque({ zone, sens }) {
